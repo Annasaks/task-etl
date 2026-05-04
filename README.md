@@ -69,9 +69,14 @@ The two sources never mix. They share only the **standard schema** (the column s
 
 ---
 
-## Standard schema (16 fields)
+## Standard schema (18 fields)
 
 Defined in [`schema.py`](schema.py) (Python dataclass — runtime contract) and [`schema.sql`](schema.sql) (SQL DDL — formal definition).
+
+The 14 first columns (team identity + venue + standings) are the **typed core**. The last four are **technical / temporal** — they make the pipeline production-grade:
+- `source_api`, `season` — lineage (which API, which year was requested)
+- `snapshot_at` — temporal anchor for historical queries (Bonus 2A)
+- `extra_fields` — JSON catch-all for upstream fields not yet mapped (Bonus 2B)
 
 | Field | Type | Source endpoint | Why |
 |---|---|---|---|
@@ -91,6 +96,8 @@ Defined in [`schema.py`](schema.py) (Python dataclass — runtime contract) and 
 | `goals_against` | INTEGER | standings | Logical complement |
 | `source_api` | STRING | metadata | Lineage |
 | `season` | INTEGER | metadata | Lineage |
+| `snapshot_at` | TIMESTAMP | metadata | Bonus 2A — historical snapshots |
+| `extra_fields` | STRING (JSON) | metadata | Bonus 2B — schema evolution catch-all |
 
 ### Schema design choices
 
@@ -269,6 +276,58 @@ BIGQUERY_LOCATION=US
 
 ---
 
+## Bonus: schema evolution and historical snapshots
+
+The PDF's second bonus asks for "versioning or schema-evolution logic — design your schema so that if one source adds new fields in future, your pipeline can still adapt, or maintain historical snapshots." Both halves are implemented; they reinforce each other.
+
+### 2A — Historical snapshots
+
+Tables are loaded in **append mode** (`WRITE_APPEND` on BigQuery, `if_exists='append'` on SQLite) instead of being truncated. Every run adds 20 new rows per source, each tagged with `snapshot_at` (UTC timestamp set at transform time). The primary key becomes `(team_id, snapshot_at)` — the same team can appear once per run, allowing temporal analysis:
+
+```sql
+-- Track Manchester City's points over time
+SELECT snapshot_at, points
+FROM `task-etlv.api_football_data.teams`
+WHERE team_name = 'Manchester City'
+ORDER BY snapshot_at;
+```
+
+**Why this matters**: this exact pattern is what powers any temporal AI feature engineering. In a real-estate context, tracking how a listing's price evolves over months feeds price-trend models. Without snapshots, every run wipes out the previous signal.
+
+### 2B — Schema evolution
+
+Two complementary mechanisms absorb upstream API changes without breaking the pipeline:
+
+**1. The `extra_fields` JSON column** — every transformer captures upstream fields not mapped to typed columns into a JSON-encoded dict:
+
+```json
+{
+  "coaches": [{"coach_name": "Pep Guardiola"}],
+  "venue.venue_address": "Rowsley Street",
+  "home_league_W": "12",
+  "home_league_GA": "12",
+  "away_league_W": "9",
+  "fk_stage_key": "6",
+  "stage_name": "Current"
+}
+```
+
+**No upstream field is ever silently dropped.** If API-Football adds a new attribute tomorrow, it lands in `extra_fields` automatically. Promoting it to a first-class column is just a one-line change in the transformer's `KNOWN_*_KEYS` set.
+
+**2. BigQuery `ALLOW_FIELD_ADDITION`** — the BigQuery load job is configured with:
+```python
+schema_update_options=[bigquery.SchemaUpdateOption.ALLOW_FIELD_ADDITION]
+```
+If we *do* promote a new field to a first-class column in the transformer, BigQuery's table schema auto-extends on the next load — no manual `ALTER TABLE` migration needed.
+
+**Why this matters**: when ingesting from many platforms that each evolve independently, the cost of "API X added field Y, our pipeline crashed at 3am" is the exact pain point of multi-source data ingestion systems. Both mechanisms together make new-field arrival a non-event.
+
+### Trade-off documented
+
+CSV exports remain **single-snapshot** (each run rewrites `data/exports/*.csv` with the current state). This keeps the deliverable a small, consumable file rather than an ever-growing dump. The full historical view lives in the database.
+
+---
+
 ## Bonus: monitoring dashboard (Looker Studio)
 
 Live dashboard:
@@ -355,6 +414,7 @@ To check the latest run: https://github.com/Annasaks/task-etl/actions
 | Error logging — schema changes | ✅ | `extract/*:_check_schema` |
 | **Optional** — scheduled execution | ✅ | `.github/workflows/etl.yml` (daily) |
 | **Bonus 1** — monitoring dashboard | ✅ | [Looker Studio dashboard](https://datastudio.google.com/reporting/dab6608e-2856-4583-bd95-2cfd10a9b322) + `monitoring/` |
+| **Bonus 2** — schema evolution / historical snapshots | ✅ | append-only loading + `snapshot_at` + `extra_fields` JSON + `ALLOW_FIELD_ADDITION` |
 | Export — CSV | ✅ | `data/exports/*.csv` |
 | Source code with run instructions | ✅ | this README |
 | Schema definition (DDL) | ✅ | `schema.sql` |

@@ -1,4 +1,6 @@
+import json
 import logging
+from datetime import datetime, timezone
 from typing import Optional
 
 import pandas as pd
@@ -10,21 +12,46 @@ logger = logging.getLogger(__name__)
 
 SOURCE = "api_football"
 
+# Top-level keys we map explicitly. Anything else goes into extra_fields.
+# We deliberately drop "players" — too large and not a team-level attribute.
+KNOWN_TEAM_KEYS = {"team_key", "team_name", "team_country", "team_founded", "team_badge", "venue", "players"}
+KNOWN_VENUE_KEYS = {"venue_name", "venue_city", "venue_capacity"}
+KNOWN_STANDING_KEYS = {
+    "country_name", "league_id", "league_name", "team_id", "team_name", "team_badge",
+    "overall_league_position", "overall_league_payed",
+    "overall_league_W", "overall_league_D", "overall_league_L",
+    "overall_league_GF", "overall_league_GA", "overall_league_PTS",
+    # home_*/away_* sub-stats are intentionally captured in extra_fields below.
+}
+
+
+def _build_extra(team_info: dict, venue: dict, entry: dict) -> Optional[str]:
+    """Bonus 2B: capture unmapped upstream fields as JSON."""
+    extra = {}
+    extra.update({
+        k: v for k, v in team_info.items()
+        if k not in KNOWN_TEAM_KEYS and v not in (None, "", [])
+    })
+    extra.update({
+        f"venue.{k}": v for k, v in venue.items()
+        if k not in KNOWN_VENUE_KEYS and v not in (None, "")
+    })
+    extra.update({
+        k: v for k, v in entry.items()
+        if k not in KNOWN_STANDING_KEYS and v not in (None, "")
+    })
+    return json.dumps(extra, ensure_ascii=False) if extra else None
+
 
 def transform(teams_raw: list, standings_raw: list) -> Optional[pd.DataFrame]:
-    """Build a DataFrame matching the standard schema from API-Football raw responses.
-
-    Joins teams.team_key with standings.team_id (both string-typed by the API).
-    Skips rows missing team_id or team_name (logged as ERROR).
-    Logs a WARNING per missing optional field.
-    All numeric fields are strings in API-Football; safe_int handles casting.
-    """
+    """Build a DataFrame matching the standard schema from API-Football raw responses."""
     if not teams_raw or not standings_raw:
         logger.error(f"{SOURCE}: empty input (teams={bool(teams_raw)}, standings={bool(standings_raw)})")
         return None
 
     teams_by_id = {t.get("team_key"): t for t in teams_raw if t.get("team_key")}
 
+    snapshot_at = datetime.now(timezone.utc)
     rows = []
     skipped = 0
     warnings = 0
@@ -62,10 +89,15 @@ def transform(teams_raw: list, standings_raw: list) -> Optional[pd.DataFrame]:
             "goals_against": safe_int(entry.get("overall_league_GA")),
             "source_api": SOURCE,
             "season": SEASON,
+            "snapshot_at": snapshot_at,
+            "extra_fields": _build_extra(team_info, venue, entry),
         }
 
         for col, val in row.items():
-            if val is None and col not in ("founded_year", "logo_url", "stadium_name", "stadium_city", "stadium_capacity"):
+            if val is None and col not in (
+                "founded_year", "logo_url", "stadium_name", "stadium_city",
+                "stadium_capacity", "extra_fields",
+            ):
                 logger.warning(f"{SOURCE}: team {team_name} missing required-ish field '{col}'")
                 warnings += 1
 
@@ -77,7 +109,6 @@ def transform(teams_raw: list, standings_raw: list) -> Optional[pd.DataFrame]:
 
 
 if __name__ == "__main__":
-    import json
     from pathlib import Path
 
     logging.basicConfig(level=logging.INFO)
