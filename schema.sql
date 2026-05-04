@@ -38,3 +38,24 @@ CREATE TABLE IF NOT EXISTS teams_api_football (
     source_api       VARCHAR(20)  NOT NULL DEFAULT 'api_football',
     season           SMALLINT     NOT NULL
 );
+
+-- Pipeline monitoring (Bonus 1: dashboard)
+-- One row per (run_id × source_api). Append-only — keeps full history.
+-- BigQuery: lives in dataset `pipeline_monitoring`, table `pipeline_runs`.
+CREATE TABLE IF NOT EXISTS pipeline_runs (
+    run_id              VARCHAR(20)  NOT NULL,
+    source_api          VARCHAR(20)  NOT NULL,
+    started_at          TIMESTAMP    NOT NULL,
+    ended_at            TIMESTAMP,
+    duration_seconds    REAL,
+    extract_success     BOOLEAN      NOT NULL,
+    transform_success   BOOLEAN      NOT NULL,
+    load_success        BOOLEAN      NOT NULL,
+    export_success      BOOLEAN      NOT NULL,
+    rows_extracted      INTEGER,
+    rows_transformed    INTEGER,
+    rows_skipped        INTEGER,
+    warnings_count      INTEGER,
+    errors_count        INTEGER,
+    PRIMARY KEY (run_id, source_api)
+);
