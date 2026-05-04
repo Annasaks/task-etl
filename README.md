@@ -2,6 +2,9 @@
 
 A modular ETL pipeline that fetches Premier League team and standings data from **two independent football APIs**, normalises them into a single standard schema, stores each source in its own dataset, and exports to CSV. Runs locally (SQLite) or in the cloud (BigQuery), and is scheduled daily via GitHub Actions.
 
+🔗 **Live dashboard (Looker Studio)** — [view the monitoring + business dashboard](https://datastudio.google.com/reporting/dab6608e-2856-4583-bd95-2cfd10a9b322)
+🔗 **Scheduled runs (GitHub Actions)** — [view the latest runs](https://github.com/Annasaks/task-etl/actions)
+
 > Home task assignment: see the original brief in [the task description](#task-coverage).
 
 ---
@@ -266,6 +269,54 @@ BIGQUERY_LOCATION=US
 
 ---
 
+## Bonus: monitoring dashboard (Looker Studio)
+
+Live dashboard:
+**https://datastudio.google.com/reporting/dab6608e-2856-4583-bd95-2cfd10a9b322**
+
+Per the PDF's first bonus option, the pipeline emits per-run metrics that feed a Looker Studio dashboard tracking:
+- **Total runs** (all-time count, per source)
+- **Pipeline duration over time** (time series, broken down by source)
+- **Records transformed per source** (success volume)
+- **Total errors and warnings logged** (KPI scorecards)
+- **Top 5 Premier League teams by points** (business chart, reading from `api_sports_data.teams`)
+
+### How metrics are produced
+
+Each pipeline run instantiates a `RunMetrics` dataclass per source ([`monitoring/metrics_collector.py`](monitoring/metrics_collector.py)) and a `CountingHandler` attached to the root logger that automatically counts `WARNING` and `ERROR` records during the source's flow. At the end of the run, a single batch insert appends two rows (one per source) to:
+
+- `pipeline_monitoring.pipeline_runs` in BigQuery (when `LOAD_BACKEND=bigquery`)
+- `pipeline_runs` table in `data/etl.db` (when `LOAD_BACKEND=sqlite`)
+
+The metrics table is **append-only** (`WRITE_APPEND` / `if_exists='append'`) — every run adds new rows so the dashboard shows the full history. This is the opposite of the data tables which use `WRITE_TRUNCATE` for idempotency.
+
+### Schema of `pipeline_runs`
+
+| Field | Type | Description |
+|---|---|---|
+| `run_id` | STRING | `YYYYMMDD-HHMMSS` — shared across both sources of the same execution |
+| `source_api` | STRING | `api_sports` / `api_football` |
+| `started_at` / `ended_at` | TIMESTAMP | UTC |
+| `duration_seconds` | FLOAT | wall-clock duration of the source's flow |
+| `extract_success` / `transform_success` / `load_success` / `export_success` | BOOLEAN | per-step status |
+| `rows_extracted` / `rows_transformed` / `rows_skipped` | INTEGER | row counts |
+| `warnings_count` / `errors_count` | INTEGER | log records counted per severity |
+
+The full DDL is in [`schema.sql`](schema.sql).
+
+### Why these metrics
+
+The PDF asks for a dashboard that tracks "API call counts, latency, error rates, pipeline processing time, record counts". Mapping:
+
+| PDF requirement | Field |
+|---|---|
+| Latency / processing time | `duration_seconds` |
+| Error rates | `extract_success` / `transform_success` / `load_success` / `export_success` + `errors_count` |
+| Record counts | `rows_extracted` / `rows_transformed` |
+| API call counts | counted by row presence (1 row per source per run) |
+
+---
+
 ## Bonus: scheduled execution (GitHub Actions)
 
 The PDF lists scheduling as optional. This pipeline runs **daily at 06:00 UTC** via [`.github/workflows/etl.yml`](.github/workflows/etl.yml), with full BigQuery integration:
@@ -303,6 +354,7 @@ To check the latest run: https://github.com/Annasaks/task-etl/actions
 | Error logging — API timeouts | ✅ | `http_utils.py:retry` |
 | Error logging — schema changes | ✅ | `extract/*:_check_schema` |
 | **Optional** — scheduled execution | ✅ | `.github/workflows/etl.yml` (daily) |
+| **Bonus 1** — monitoring dashboard | ✅ | [Looker Studio dashboard](https://datastudio.google.com/reporting/dab6608e-2856-4583-bd95-2cfd10a9b322) + `monitoring/` |
 | Export — CSV | ✅ | `data/exports/*.csv` |
 | Source code with run instructions | ✅ | this README |
 | Schema definition (DDL) | ✅ | `schema.sql` |
