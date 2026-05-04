@@ -44,7 +44,7 @@ The two sources run as independent flows. A failure on one does not stop the oth
 
 ## Standard schema
 
-The 14 first columns are the business core. The 4 last are technical: lineage (`source_api`, `season`) and history (`snapshot_at`, `extra_fields`). The full DDL is in [`schema.sql`](schema.sql); the Python contract is in [`schema.py`](schema.py).
+The 14 first columns are the business core. The 4 last are technical: lineage (`source_api`, `season`) and history (`snapshot_at`, `extra_fields`). The full DDL is in [`schema.sql`](schema.sql).
 
 | Field | Type | Source |
 | --- | --- | --- |

@@ -3,5 +3,4 @@ sqlalchemy
 python-dotenv
 requests
 google-cloud-bigquery
-pandas-gbq
 pyarrow
