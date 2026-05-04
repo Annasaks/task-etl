@@ -44,15 +44,14 @@ The two sources run as independent flows. A failure on one does not stop the oth
 
 ## Standard schema
 
-The 14 first columns are the business core. The 4 last are technical: lineage (`source_api`, `season`) and history (`snapshot_at`, `extra_fields`). The full DDL is in [`schema.sql`](schema.sql).
+12 business columns plus 4 technical (lineage and history). The full DDL is in [`schema.sql`](schema.sql).
 
 | Field | Type | Source |
 | --- | --- | --- |
 | `team_id` | STRING | both, prefixed by source (`api_sports_50`) |
 | `team_name` | STRING | both |
 | `founded_year` | INTEGER | teams |
-| `logo_url` | STRING | teams |
-| `stadium_name`, `stadium_city`, `stadium_capacity` | STRING / STRING / INT | teams.venue |
+| `stadium_name`, `stadium_city` | STRING | teams.venue |
 | `league_position`, `points` | INTEGER | standings |
 | `wins`, `draws`, `losses` | INTEGER | standings |
 | `goals_for`, `goals_against` | INTEGER | standings |
@@ -60,9 +59,9 @@ The 14 first columns are the business core. The 4 last are technical: lineage (`
 | `snapshot_at` | TIMESTAMP | append-only history |
 | `extra_fields` | STRING (JSON) | catch-all for upstream fields not mapped to typed columns |
 
-**Why these fields.** Every field explicitly listed in the PDF is present (team name, foundation year, home stadium, city, table position, wins, losses, goals scored). I added complements that keep the schema symmetric across the two APIs and useful for downstream analysis: `draws`, `goals_against`, `stadium_capacity`, `logo_url`. I did *not* keep `team_code` because it exists only in API-Sports; including it would have left a permanently empty column on the API-Football side.
+**Why these fields.** All eight fields explicitly listed in the PDF are present (team name, foundation year, home stadium, city, table position, wins, losses, goals scored). I added the complements without which the data is incomplete: `draws` to close the W-D-L triplet, `goals_against` to make the goal differential computable, `points` because it is the actual ranking metric in football. `team_id` is the technical primary key, prefixed by source so the same team across the two APIs cannot collide (Manchester City is `50` on API-Sports and `80` on API-Football). `source_api` and `season` give lineage and scope. `snapshot_at` and `extra_fields` come from Bonus 2.
 
-The `team_id` is prefixed with the source name because the same team has different internal IDs across the two APIs. Manchester City is `50` on API-Sports and `80` on API-Football; without the prefix, downstream consumers could confuse them.
+I deliberately left out a few fields the APIs return: `team_code` is only available on API-Sports (would leave a half-empty column), `team_country` is constant for a single league (always "England"), `played` and `goals_diff` are computable from other columns, and the home/away splits are too granular for a team summary — they land in `extra_fields` if they are needed later.
 
 ## The two APIs
 

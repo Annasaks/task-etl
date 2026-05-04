@@ -11,13 +11,16 @@ logger = logging.getLogger(__name__)
 
 SOURCE = "api_sports"
 
-# Source columns we map to schema columns. Anything else goes to extra_fields.
+# Source columns mapped to typed schema columns OR deliberately dropped.
+# Anything else falls into extra_fields.
 MAPPED_COLS = {
-    "team.id", "team.name", "team.founded", "team.logo",
-    "venue.name", "venue.city", "venue.capacity",
+    "team.id", "team.name", "team.founded",
+    "venue.name", "venue.city",
     "rank", "points",
     "all.win", "all.draw", "all.lose",
     "all.goals.for", "all.goals.against",
+    # deliberately dropped — present in the API but not in our schema:
+    "team.logo", "venue.capacity",
 }
 
 
@@ -45,10 +48,8 @@ def transform(teams_raw: list, standings_raw: list) -> Optional[pd.DataFrame]:
         "team_id": SOURCE + "_" + df["team.id"].astype(int).astype(str),
         "team_name": df["team.name"],
         "founded_year": pd.to_numeric(df.get("team.founded"), errors="coerce").astype("Int64"),
-        "logo_url": df.get("team.logo_t").fillna(df.get("team.logo")),
         "stadium_name": df.get("venue.name"),
         "stadium_city": df.get("venue.city"),
-        "stadium_capacity": pd.to_numeric(df.get("venue.capacity"), errors="coerce").astype("Int64"),
         "league_position": pd.to_numeric(df["rank"], errors="coerce").astype("Int64"),
         "points": pd.to_numeric(df["points"], errors="coerce").astype("Int64"),
         "wins": pd.to_numeric(df["all.win"], errors="coerce").astype("Int64"),

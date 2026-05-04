@@ -11,16 +11,19 @@ logger = logging.getLogger(__name__)
 
 SOURCE = "api_football"
 
-# Source columns we map to schema columns. Anything else goes to extra_fields.
+# Source columns mapped to typed schema columns OR deliberately dropped.
+# Anything else falls into extra_fields.
 MAPPED_COLS = {
     "team_id", "team_name", "team_key",
-    "team_founded", "team_badge",
-    "venue.venue_name", "venue.venue_city", "venue.venue_capacity",
+    "team_founded",
+    "venue.venue_name", "venue.venue_city",
     "overall_league_position", "overall_league_PTS",
     "overall_league_W", "overall_league_D", "overall_league_L",
     "overall_league_GF", "overall_league_GA",
-    # technical fields we don't want to clutter extra_fields with:
+    # technical fields not worth surfacing:
     "country_name", "league_id", "league_name",
+    # deliberately dropped — present in the API but not in our schema:
+    "team_badge", "venue.venue_capacity",
 }
 
 
@@ -52,10 +55,8 @@ def transform(teams_raw: list, standings_raw: list) -> Optional[pd.DataFrame]:
         "team_id": SOURCE + "_" + df["team_id"].astype(str),
         "team_name": df["team_name"],
         "founded_year": pd.to_numeric(df.get("team_founded"), errors="coerce").astype("Int64"),
-        "logo_url": df.get("team_badge_t").fillna(df.get("team_badge")),
         "stadium_name": df.get("venue.venue_name"),
         "stadium_city": df.get("venue.venue_city"),
-        "stadium_capacity": pd.to_numeric(df.get("venue.venue_capacity"), errors="coerce").astype("Int64"),
         "league_position": pd.to_numeric(df["overall_league_position"], errors="coerce").astype("Int64"),
         "points": pd.to_numeric(df["overall_league_PTS"], errors="coerce").astype("Int64"),
         "wins": pd.to_numeric(df["overall_league_W"], errors="coerce").astype("Int64"),
