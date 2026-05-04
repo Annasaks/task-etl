@@ -9,11 +9,7 @@ EXPORT_DIR = Path(__file__).resolve().parent.parent / "data" / "exports"
 
 
 def export_csv(df: pd.DataFrame, table_name: str) -> bool:
-    """Write a DataFrame to data/exports/{table_name}.csv.
-
-    UTF-8 encoded, no index column, comma-separated.
-    Returns True on success, False on failure.
-    """
+    """Write df to data/exports/{table_name}.csv (UTF-8, no index)."""
     if df is None or df.empty:
         logger.error(f"export_csv: refusing to export empty DataFrame for {table_name}")
         return False

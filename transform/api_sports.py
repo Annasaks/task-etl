@@ -12,19 +12,14 @@ logger = logging.getLogger(__name__)
 
 SOURCE = "api_sports"
 
-# Top-level keys we map explicitly. Anything else goes into extra_fields.
+# Keys we map to typed columns. Anything else goes into extra_fields.
 KNOWN_TEAM_KEYS = {"id", "name", "code", "founded", "logo"}
 KNOWN_VENUE_KEYS = {"id", "name", "city", "capacity"}
 KNOWN_STANDING_KEYS = {"team", "rank", "points", "all", "home", "away", "update"}
 
 
 def _build_extra(team_block: dict, venue: dict, entry: dict) -> Optional[str]:
-    """Capture upstream fields not mapped to first-class columns.
-
-    Bonus 2B: known fields go into typed columns; anything else lives here.
-    Combined with BigQuery's ALLOW_FIELD_ADDITION, the pipeline survives any
-    new field that the upstream API may add in the future without breaking.
-    """
+    """Collect unmapped fields into a JSON dict so new upstream fields aren't lost."""
     extra = {}
     extra.update({
         f"team.{k}": v for k, v in team_block.items()

@@ -10,14 +10,10 @@ logger = logging.getLogger(__name__)
 
 
 def load_to_bigquery(df: pd.DataFrame, dataset: str, table_name: str) -> bool:
-    """Append a DataFrame to BigQuery {project}.{dataset}.{table_name}.
+    """Append a DataFrame to {project}.{dataset}.{table_name}.
 
-    Bonus 2A — WRITE_APPEND keeps historical snapshots; the snapshot_at
-              column distinguishes versions of the same team.
-    Bonus 2B — ALLOW_FIELD_ADDITION lets BigQuery auto-extend the table
-              schema if the DataFrame contains new columns. Combined with
-              the transformer's `extra_fields` JSON column, the pipeline
-              survives any new upstream API field gracefully.
+    WRITE_APPEND keeps history. ALLOW_FIELD_ADDITION lets the table schema
+    auto-extend when a new column appears in the DataFrame.
     """
     if not BIGQUERY_PROJECT or not dataset:
         logger.error(f"BigQuery: missing project ('{BIGQUERY_PROJECT}') or dataset ('{dataset}')")

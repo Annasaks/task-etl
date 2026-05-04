@@ -12,8 +12,8 @@ logger = logging.getLogger(__name__)
 
 SOURCE = "api_football"
 
-# Top-level keys we map explicitly. Anything else goes into extra_fields.
-# We deliberately drop "players" — too large and not a team-level attribute.
+# Keys we map to typed columns. Anything else goes into extra_fields.
+# "players" is dropped — huge nested object not relevant at team level.
 KNOWN_TEAM_KEYS = {"team_key", "team_name", "team_country", "team_founded", "team_badge", "venue", "players"}
 KNOWN_VENUE_KEYS = {"venue_name", "venue_city", "venue_capacity"}
 KNOWN_STANDING_KEYS = {
@@ -21,12 +21,11 @@ KNOWN_STANDING_KEYS = {
     "overall_league_position", "overall_league_payed",
     "overall_league_W", "overall_league_D", "overall_league_L",
     "overall_league_GF", "overall_league_GA", "overall_league_PTS",
-    # home_*/away_* sub-stats are intentionally captured in extra_fields below.
 }
 
 
 def _build_extra(team_info: dict, venue: dict, entry: dict) -> Optional[str]:
-    """Bonus 2B: capture unmapped upstream fields as JSON."""
+    """Collect unmapped fields into a JSON dict so new upstream fields aren't lost."""
     extra = {}
     extra.update({
         k: v for k, v in team_info.items()

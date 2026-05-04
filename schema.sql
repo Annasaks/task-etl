@@ -1,16 +1,7 @@
--- Standard schema for Premier League team standings
--- One table per source API; same structure for both.
---
--- Bonus 2 features:
--- - snapshot_at : history-friendly. Tables are append-only, so the same team
---                 appears multiple times across runs (one per snapshot).
--- - extra_fields: JSON column capturing upstream API fields not mapped to
---                 first-class columns. Combined with BigQuery's
---                 ALLOW_FIELD_ADDITION, the pipeline absorbs new fields
---                 gracefully without manual migration.
+-- One table per source; same structure both sides.
 
 CREATE TABLE IF NOT EXISTS teams_api_sports (
-    team_id          VARCHAR(50)  NOT NULL,        -- "api_sports_{id}"
+    team_id          VARCHAR(50)  NOT NULL,
     team_name        VARCHAR(100) NOT NULL,
     founded_year     SMALLINT,
     logo_url         TEXT,
@@ -26,13 +17,13 @@ CREATE TABLE IF NOT EXISTS teams_api_sports (
     goals_against    SMALLINT,
     source_api       VARCHAR(20)  NOT NULL DEFAULT 'api_sports',
     season           SMALLINT     NOT NULL,
-    snapshot_at      TIMESTAMP    NOT NULL,         -- Bonus 2A
-    extra_fields     TEXT,                          -- Bonus 2B (JSON-encoded)
+    snapshot_at      TIMESTAMP    NOT NULL,
+    extra_fields     TEXT,
     PRIMARY KEY (team_id, snapshot_at)
 );
 
 CREATE TABLE IF NOT EXISTS teams_api_football (
-    team_id          VARCHAR(50)  NOT NULL,        -- "api_football_{id}"
+    team_id          VARCHAR(50)  NOT NULL,
     team_name        VARCHAR(100) NOT NULL,
     founded_year     SMALLINT,
     logo_url         TEXT,
@@ -48,14 +39,12 @@ CREATE TABLE IF NOT EXISTS teams_api_football (
     goals_against    SMALLINT,
     source_api       VARCHAR(20)  NOT NULL DEFAULT 'api_football',
     season           SMALLINT     NOT NULL,
-    snapshot_at      TIMESTAMP    NOT NULL,         -- Bonus 2A
-    extra_fields     TEXT,                          -- Bonus 2B (JSON-encoded)
+    snapshot_at      TIMESTAMP    NOT NULL,
+    extra_fields     TEXT,
     PRIMARY KEY (team_id, snapshot_at)
 );
 
--- Pipeline monitoring (Bonus 1: dashboard)
--- One row per (run_id × source_api). Append-only — keeps full history.
--- BigQuery: lives in dataset `pipeline_monitoring`, table `pipeline_runs`.
+-- One row per (run_id, source_api). Append-only.
 CREATE TABLE IF NOT EXISTS pipeline_runs (
     run_id              VARCHAR(20)  NOT NULL,
     source_api          VARCHAR(20)  NOT NULL,

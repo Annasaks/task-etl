@@ -6,12 +6,7 @@ LOG_FILE = LOG_DIR / "etl.log"
 
 
 def setup_logging(level: int = logging.INFO) -> None:
-    """Configure root logger with both file and console handlers.
-
-    File: logs/etl.log (persistent, cumulative across runs).
-    Console: stdout (visible during execution).
-    Format includes timestamp, module, level, message.
-    """
+    """Root logger with one handler to logs/etl.log and one to stdout."""
     LOG_DIR.mkdir(parents=True, exist_ok=True)
 
     root = logging.getLogger()

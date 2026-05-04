@@ -12,11 +12,7 @@ ENGINE_URL = f"sqlite:///{DB_PATH}"
 
 
 def load_to_sqlite(df: pd.DataFrame, table_name: str) -> bool:
-    """Append a DataFrame to data/etl.db.
-
-    Bonus 2A — append mode keeps historical snapshots (same team appears
-    once per run, distinguished by the snapshot_at column).
-    """
+    """Append a DataFrame to data/etl.db (snapshots accumulate across runs)."""
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     try:
         engine = create_engine(ENGINE_URL)

@@ -11,17 +11,7 @@ RETRYABLE_STATUS = {408, 429, 500, 502, 503, 504}
 
 
 def retry(times: int = 3, backoff: float = 2.0):
-    """Decorator that retries a function on transient HTTP errors.
-
-    Retries on:
-      - Timeout, ConnectionError (network-level)
-      - HTTPError with status in RETRYABLE_STATUS (5xx + 408 + 429)
-    Does NOT retry on 4xx (auth/not-found are permanent).
-
-    Args:
-        times: max attempts (incl. first call)
-        backoff: base seconds, doubled each retry (exponential)
-    """
+    """Retry on Timeout / ConnectionError / 5xx / 408 / 429. No retry on other 4xx."""
     def decorator(fn: Callable) -> Callable:
         @wraps(fn)
         def wrapper(*args, **kwargs):

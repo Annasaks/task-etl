@@ -26,10 +26,9 @@ def _save_raw(filename: str, data: object) -> None:
 
 
 def _check_schema(sample: dict, expected_keys: set, context: str) -> None:
-    """Log ERROR if expected keys are missing from a sample response."""
     missing = expected_keys - set(sample.keys())
     if missing:
-        logger.error(f"API-Sports schema change detected in {context}: missing keys {missing}")
+        logger.error(f"API-Sports schema change in {context}: missing keys {missing}")
 
 
 @retry(times=3, backoff=2.0)

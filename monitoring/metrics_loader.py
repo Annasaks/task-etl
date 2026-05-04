@@ -1,4 +1,3 @@
-"""Persists pipeline metrics to the configured backend (SQLite or BigQuery)."""
 import logging
 from typing import List
 
@@ -14,13 +13,7 @@ METRICS_DATASET_BQ = "pipeline_monitoring"
 
 
 def save_metrics(metrics: List[RunMetrics]) -> bool:
-    """Append metrics rows to the configured backend.
-
-    SQLite : data/etl.db, table pipeline_runs (mode append — keeps history)
-    BigQuery : {project}.pipeline_monitoring.pipeline_runs (mode WRITE_APPEND)
-    """
     if not metrics:
-        logger.warning("save_metrics: nothing to save")
         return False
 
     df = pd.DataFrame([m.to_dict() for m in metrics])
