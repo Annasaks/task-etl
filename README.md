@@ -1,429 +1,145 @@
 # Premier League ETL Pipeline
 
-A modular ETL pipeline that fetches Premier League team and standings data from **two independent football APIs**, normalises them into a single standard schema, stores each source in its own dataset, and exports to CSV. Runs locally (SQLite) or in the cloud (BigQuery), and is scheduled daily via GitHub Actions.
+This pipeline ingests Premier League team and standings data from two football APIs, normalises both sources into a single schema, stores each in its own table or dataset, and exports the result. It runs locally on SQLite or remotely on BigQuery, and is scheduled daily on GitHub Actions.
 
-🔗 **Live dashboard (Looker Studio)** — [view the monitoring + business dashboard](https://datastudio.google.com/reporting/dab6608e-2856-4583-bd95-2cfd10a9b322)
-🔗 **Scheduled runs (GitHub Actions)** — [view the latest runs](https://github.com/Annasaks/task-etl/actions)
-
-> Home task assignment: see the original brief in [the task description](#task-coverage).
-
----
+- Live monitoring dashboard: https://datastudio.google.com/reporting/dab6608e-2856-4583-bd95-2cfd10a9b322
+- Scheduled runs: https://github.com/Annasaks/task-etl/actions
 
 ## Quick start
 
-### Run locally
-
 ```bash
-# 1. Install dependencies
 pip install -r requirements.txt
-
-# 2. Copy .env.example to .env and fill in your API keys
-cp .env.example .env
-# edit .env
-
-# 3. Run the full pipeline (extract → transform → load → export)
+cp .env.example .env          # fill in your API keys
 python main.py
-
-# 4. Inspect the loaded data
-python -m scripts.preview
+python -m scripts.preview     # inspect the loaded tables
 ```
 
-After running, you'll find:
-- `data/raw/*.json` — raw API responses (4 files)
-- `data/etl.db` — SQLite database with 2 tables
-- `data/exports/*.csv` — CSV export per source (2 files)
-- `logs/etl.log` — pipeline log
+After a run you will find:
 
-### Run against BigQuery
+- `data/etl.db` — SQLite database with one table per source plus a metrics table
+- `data/exports/*.csv` — one CSV per source
+- `logs/etl.log` — pipeline log, cumulative across runs
+
+To run against BigQuery instead of SQLite:
 
 ```bash
-# Set the backend in .env or as an env var
 LOAD_BACKEND=bigquery python main.py
 ```
-
-The pipeline will write to two separate datasets in your GCP project (configured in `.env`).
-
----
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│                            main.py                                   │
-│                                                                      │
-│  ┌───────────┐    ┌────────────┐    ┌───────────┐    ┌──────────┐  │
-│  │  EXTRACT  │ →  │ TRANSFORM  │ →  │   LOAD    │ →  │  EXPORT  │  │
-│  │ (REST API)│    │  (pandas)  │    │ (SQLite / │    │  (CSV)   │  │
-│  │           │    │            │    │  BigQuery)│    │          │  │
-│  └───────────┘    └────────────┘    └───────────┘    └──────────┘  │
-│                                                                      │
-│   Two independent flows, one per source — failure of one does not   │
-│   stop the other. Each source ends up in its own dataset/table.     │
-└─────────────────────────────────────────────────────────────────────┘
+                       main.py
+                          |
+              +-----------+-----------+
+              |                       |
+        API-Sports flow         API-Football flow
+        extract -> transform    extract -> transform
+        -> load -> CSV          -> load -> CSV
+              |                       |
+        teams_api_sports        teams_api_football
 ```
 
-**Source flow A** — `API-Sports` → table `teams_api_sports` (or BigQuery dataset `api_sports_data.teams`)
-**Source flow B** — `API-Football` → table `teams_api_football` (or BigQuery dataset `api_football_data.teams`)
+The two sources run as independent flows. A failure on one does not stop the other. They share only the column structure of the standard schema, never the data: each source lands in its own SQLite table or its own BigQuery dataset.
 
-The two sources never mix. They share only the **standard schema** (the column structure), not the data.
+## Standard schema
 
----
+The 14 first columns are the business core. The 4 last are technical: lineage (`source_api`, `season`) and history (`snapshot_at`, `extra_fields`). The full DDL is in [`schema.sql`](schema.sql); the Python contract is in [`schema.py`](schema.py).
 
-## Standard schema (18 fields)
+| Field | Type | Source |
+| --- | --- | --- |
+| `team_id` | STRING | both, prefixed by source (`api_sports_50`) |
+| `team_name` | STRING | both |
+| `founded_year` | INTEGER | teams |
+| `logo_url` | STRING | teams |
+| `stadium_name`, `stadium_city`, `stadium_capacity` | STRING / STRING / INT | teams.venue |
+| `league_position`, `points` | INTEGER | standings |
+| `wins`, `draws`, `losses` | INTEGER | standings |
+| `goals_for`, `goals_against` | INTEGER | standings |
+| `source_api`, `season` | STRING / INT | pipeline metadata |
+| `snapshot_at` | TIMESTAMP | append-only history |
+| `extra_fields` | STRING (JSON) | catch-all for upstream fields not mapped to typed columns |
 
-Defined in [`schema.py`](schema.py) (Python dataclass — runtime contract) and [`schema.sql`](schema.sql) (SQL DDL — formal definition).
+**Why these fields.** Every field explicitly listed in the PDF is present (team name, foundation year, home stadium, city, table position, wins, losses, goals scored). I added complements that keep the schema symmetric across the two APIs and useful for downstream analysis: `draws`, `goals_against`, `stadium_capacity`, `logo_url`. I did *not* keep `team_code` because it exists only in API-Sports; including it would have left a permanently empty column on the API-Football side.
 
-The 14 first columns (team identity + venue + standings) are the **typed core**. The last four are **technical / temporal** — they make the pipeline production-grade:
-- `source_api`, `season` — lineage (which API, which year was requested)
-- `snapshot_at` — temporal anchor for historical queries (Bonus 2A)
-- `extra_fields` — JSON catch-all for upstream fields not yet mapped (Bonus 2B)
+The `team_id` is prefixed with the source name because the same team has different internal IDs across the two APIs. Manchester City is `50` on API-Sports and `80` on API-Football; without the prefix, downstream consumers could confuse them.
 
-| Field | Type | Source endpoint | Why |
-|---|---|---|---|
-| `team_id` | STRING | both | Source-prefixed primary key (`api_sports_50` / `api_football_80`) — avoids collisions across sources |
-| `team_name` | STRING | both | PDF requirement: "team name" |
-| `founded_year` | INTEGER | teams | PDF requirement: "foundation year" |
-| `logo_url` | STRING | teams | Useful for downstream dashboards |
-| `stadium_name` | STRING | teams.venue | PDF requirement: "home stadium" |
-| `stadium_city` | STRING | teams.venue | PDF requirement: "city" |
-| `stadium_capacity` | INTEGER | teams.venue | Useful analytics dimension |
-| `league_position` | INTEGER | standings | PDF requirement: "table position" |
-| `points` | INTEGER | standings | Implied by performance |
-| `wins` | INTEGER | standings | PDF requirement: "wins" |
-| `draws` | INTEGER | standings | Logical complement |
-| `losses` | INTEGER | standings | PDF requirement: "losses" |
-| `goals_for` | INTEGER | standings | PDF requirement: "goals scored" |
-| `goals_against` | INTEGER | standings | Logical complement |
-| `source_api` | STRING | metadata | Lineage |
-| `season` | INTEGER | metadata | Lineage |
-| `snapshot_at` | TIMESTAMP | metadata | Bonus 2A — historical snapshots |
-| `extra_fields` | STRING (JSON) | metadata | Bonus 2B — schema evolution catch-all |
-
-### Schema design choices
-
-- **16 fields** — slightly above the PDF's "around 10–15" range. The justification: `logo_url`, `stadium_capacity`, `draws`, `goals_against` enable richer downstream analytics (and are kept symmetric across both sources).
-- **`team_code` was dropped** — present only in API-Sports, absent in API-Football. Including it would have left a half-empty column. Removing it makes the schema honest about what both APIs can deliver.
-- **All optional fields are `Optional[int]` / `Optional[str]`** — the transformer logs a `WARNING` per missing field rather than crashing.
-- **Source-prefixed `team_id`** — the same team has different internal IDs across the two APIs (Manchester City is `50` in API-Sports, `80` in API-Football). Prefixing eliminates any ambiguity.
-
----
-
-## Data sources
+## The two APIs
 
 | | API-Sports | API-Football |
-|---|---|---|
-| Base URL | `https://v3.football.api-sports.io` | `https://apiv3.apifootball.com/` |
+| --- | --- | --- |
 | Auth | `x-apisports-key` header | `APIkey` query param |
-| Endpoints used | `/teams`, `/standings` | `?action=get_teams`, `?action=get_standings` |
-| Premier League ID | `39` | `152` |
-| Numeric types | native `int` / `float` | **all strings** (cast to `int` in transformer) |
-| Season parameter | `season=2023` (year only) | `season=2023/2024` (slash format) |
+| Format | nested JSON | flat keys |
+| Numeric types | native ints | strings (cast in transformer) |
 
-### Endpoint structure differences
+Each API has its own transformer; there is no shared parser. Both produce the same standard schema, but the mapping logic is per-source.
 
-API-Sports returns nested JSON (`team.id`, `all.goals.for`...). API-Football returns flat keys with prefixes (`team_key`, `overall_league_GF`...). The two transformers handle the mapping per-source — no shared parser.
+For each source, the transformer joins `teams` and `standings` (the schema needs both) using a Python dict-lookup on the team identifier. I chose this over `pd.merge` because the volume is small (20 teams) and the JSON is nested — a dict lookup is direct, fast and easier to read.
 
-### Joining teams + standings
+**One mismatch is documented.** API-Sports correctly returns the 2023/24 final standings. API-Football's free tier ignores the `season` parameter and returns the current season instead. The PDF accepts this case explicitly: *"if you cannot get full seasonal data / misaligning seasons due to limits, that is acceptable."* The two tables remain independent, so there is no cross-contamination — only a divergence that is documented rather than hidden.
 
-Both transformers must combine **two endpoints** to populate the schema:
-- `teams` provides identity, founding year, stadium, city
-- `standings` provides position, points, wins, draws, losses, goals
+## Error handling
 
-The join is done in Python via a dict-lookup (O(n)):
-```python
-teams_by_id = {t["team"]["id"]: t for t in teams_raw}      # build index
-team_info = teams_by_id.get(api_id, {})                    # lookup per row
-```
+The pipeline distinguishes three severities and applies them consistently across the codebase.
 
-This is preferred over `pd.merge` because the volume is tiny (20 rows) and the JSON is nested — Python is the natural tool to parse it.
+| Concern | Behaviour | File |
+| --- | --- | --- |
+| Optional field missing | `WARNING` logged, `None` written, row kept | `transform/api_*.py` |
+| Critical field missing (`team_id` or `team_name`) | `ERROR` logged, row skipped | `transform/api_*.py` |
+| Network timeout, 5xx, 429 | retry three times with exponential backoff (2s, 4s, 8s) | `http_utils.py` |
+| Permanent HTTP error (4xx) | no retry, source skipped, the other source continues | `extract/api_*.py` |
+| Unexpected response shape | expected keys compared against received keys, `ERROR` logged with the diff | `extract/api_*.py:_check_schema` |
 
----
+Logs are written to both `logs/etl.log` (cumulative) and stdout. Each transform ends with a summary line `transformed N rows, M skipped, K warnings`, and the pipeline ends with `API-Sports: 20 rows / loaded / CSV ok / 1.5s`.
 
-## Error handling and observability
+## Tech choices
 
-The PDF requires error logging for: **missing fields**, **API timeouts**, **unexpected schema changes**. Each is addressed:
+I chose Python with pandas because the source data is nested JSON and the volume is small (20 rows per source); a SQL-based ELT would have been heavier than what the data needs. SQLAlchemy provides the SQLite engine, which means swapping in PostgreSQL would only be a connection-string change. For BigQuery I use the official `google-cloud-bigquery` client, which integrates with Application Default Credentials in dev and with a service account in CI.
 
-| Concern | Implementation | Where |
-|---|---|---|
-| Missing fields (optional) | `WARNING` logged per field, `None` written | `transform/api_*.py` |
-| Missing critical fields (`team_id`, `team_name`) | `ERROR` logged, row skipped, count surfaced in summary | `transform/api_*.py` |
-| API timeouts | Retry decorator (3 attempts, exponential backoff: 2s/4s/8s) on `Timeout`, `ConnectionError`, HTTP 5xx/408/429 | `http_utils.py` |
-| Permanent HTTP errors (4xx) | No retry, `ERROR` logged, source skipped, other source continues | `extract/api_*.py` |
-| Unexpected schema changes | Expected key set compared against the first response item, `ERROR` logged with the missing keys | `extract/api_*.py:_check_schema` |
-| Pipeline-level failures | Each source has its own try/skip block — a single API outage does not abort the entire pipeline | `main.py:run_source` |
+The dispatcher pattern in `load/loader.py` lets `LOAD_BACKEND` toggle between SQLite and BigQuery without any branching in `main.py`. The same code path runs locally and in production.
 
-### Logging configuration
+For the schedule, I used GitHub Actions rather than Cloud Run or Cloud Functions because I wanted no Docker, the cron to live next to the code, and the runs to be directly visible to anyone reviewing the project.
 
-- **Both** a file handler (`logs/etl.log`, cumulative) and a stream handler (stdout)
-- Format: `timestamp | LEVEL | module | message`
-- Three levels are used meaningfully: `INFO` for progress, `WARNING` for recoverable data issues, `ERROR` for unrecoverable failures
-- Each transform step logs a summary: `transformed N rows, M skipped, K warnings`
+## Bonuses
 
-### Verified error scenarios
+### Monitoring dashboard
 
-| Scenario | Outcome |
-|---|---|
-| Invalid API key (HTTP 403) | No retry, `ERROR` logged, source flow skipped, other source completes |
-| Standings entry without `team.id` | `ERROR` logged, row skipped (counted in summary) |
-| Team in standings missing from teams endpoint | `WARNING` logged, row kept with `None` for venue fields |
-| Missing `venue` key in API-Sports response | `_check_schema` logs `ERROR` with the missing key |
+Live: https://datastudio.google.com/reporting/dab6608e-2856-4583-bd95-2cfd10a9b322
 
----
+Each run writes per-source metrics — duration, success flags, row counts, warnings, errors — to a `pipeline_monitoring.pipeline_runs` table on BigQuery. The Looker Studio dashboard reads this table and shows pipeline health (KPI scorecards, time series, error counts) alongside a top-5 business chart that reads from the data table. Implementation in [`monitoring/`](monitoring/).
 
-## Schema mismatches and known assumptions
+### Schema evolution and historical snapshots
 
-### Season alignment between APIs
+The data tables are loaded in append mode rather than truncated, so each run adds 20 new rows per source tagged with `snapshot_at` (set at transform time). The same team can therefore appear in multiple rows over time, which is what enables temporal queries such as "how have Manchester City's points evolved week over week".
 
-API-Sports correctly returns the **2023/24 final standings** (Manchester City, 91 pts, 38 games played).
-API-Football, on the **free tier**, ignores the `season=2023/2024` parameter and returns the **current season** (Arsenal #1 with 35 games played at fetch time).
+For the schema-evolution side, every transformer collects upstream fields that aren't mapped to typed columns into a JSON-encoded `extra_fields` dict. No upstream field is dropped. On BigQuery, the load job uses `schema_update_options=[ALLOW_FIELD_ADDITION]`, so promoting a captured field to a first-class column is one line in the transformer plus the next run — no manual table migration.
 
-This is acknowledged by the PDF:
-> *"Stay within the free tier of each API — if you cannot get full seasonal data / misaligning seasons due to limits, that is acceptable."*
+### Scheduled execution
 
-The pipeline does not attempt to reconcile this. Each source lands in its own dataset, and the `season` column reflects the **requested** season, not necessarily the season actually returned by the API. This is a known limitation, documented here rather than hidden.
+The workflow `.github/workflows/etl.yml` runs daily at 06:00 UTC and is also manually triggerable. It authenticates to GCP via a service account stored as a GitHub Secret, runs the pipeline against BigQuery, and uploads the logs and CSVs as run artifacts (kept 14 days).
 
-### Field absence
-
-`team_code` exists in API-Sports but not in API-Football. It was removed from the schema to keep the contract symmetric between sources.
-
-### String typing in API-Football
-
-API-Football returns all numeric fields as strings (`"76"`, `"55097"`, `""` for missing). The `transform/utils.py` helpers (`safe_int`, `safe_str`) absorb this without a try/except per call site.
-
----
-
-## Tech choices and rationale
-
-| Choice | Why |
-|---|---|
-| **Python + pandas** for transform | Source data is nested JSON, volume is tiny (20 rows × 2 sources) — Python parses naturally and pandas slots into the load step |
-| **SQLAlchemy + SQLite** for local load | SQLAlchemy abstracts the engine, so swapping in PostgreSQL would be one URL change. SQLite is in stdlib (zero setup, file-based, easy to inspect) |
-| **`google-cloud-bigquery`** for cloud load | Native, well-supported, integrates with ADC for local dev and service accounts for CI |
-| **Backend selector via env var** (`LOAD_BACKEND=sqlite\|bigquery`) | Same code path works locally and in production. No conditional branches in `main.py` |
-| **One BigQuery dataset per source** | The PDF asks for "dataset OR table" separation — using two datasets is the strictest possible interpretation, with the side benefit of per-source IAM granularity |
-| **Pure-Python retry decorator** rather than `tenacity` | One small file, no extra dependency, transparent behaviour |
-| **GitHub Actions** for scheduling | No Docker, no Cloud Run setup; the cron lives next to the code; runs are visible to reviewers |
-
----
-
-## Project structure
+## Project layout
 
 ```
-task-etl/
-├── main.py                       # Pipeline orchestrator
-├── config.py                     # Centralised env var loading
-├── logging_config.py             # File + stdout logging setup
-├── http_utils.py                 # @retry decorator
-├── schema.py                     # Standard schema (Python dataclass)
-├── schema.sql                    # Standard schema (SQL DDL)
-├── requirements.txt
-├── .env.example                  # Template for .env (real .env is gitignored)
-│
-├── extract/
-│   ├── api_sports.py             # API-Sports HTTP client + schema check
-│   └── api_football.py           # API-Football HTTP client + schema check
-│
-├── transform/
-│   ├── utils.py                  # safe_int, safe_str helpers
-│   ├── api_sports.py             # API-Sports raw → standard schema
-│   └── api_football.py           # API-Football raw → standard schema
-│
-├── load/
-│   ├── loader.py                 # Backend dispatcher
-│   ├── sqlite_loader.py          # SQLite backend (default)
-│   └── bigquery_loader.py        # BigQuery backend
-│
-├── export/
-│   └── csv_exporter.py           # CSV export per source
-│
-├── scripts/
-│   └── preview.py                # Inspect SQLite content quickly
-│
-├── .github/workflows/
-│   └── etl.yml                   # Daily schedule (06:00 UTC) + manual trigger
-│
-└── data/
-    ├── raw/                      # Raw JSON responses (gitignored)
-    ├── etl.db                    # SQLite database (gitignored)
-    └── exports/                  # CSV deliverables
+extract/     REST API clients, one per source (retry, schema check, raw JSON dump)
+transform/   raw response -> standard schema, one per source
+load/        backend dispatcher (SQLite or BigQuery)
+export/      CSV writer
+monitoring/  per-run metrics collection
+main.py      orchestrator
+schema.sql   formal DDL
 ```
-
----
-
-## Configuration reference
-
-All configuration is loaded from `.env` (gitignored) via `python-dotenv`. See `.env.example` for the full list:
-
-```env
-# API keys
-API_SPORTS_KEY=your_key
-API_FOOTBALL_KEY=your_key
-
-# Pipeline scope
-LEAGUE_ID_API_SPORTS=39          # Premier League
-LEAGUE_ID_API_FOOTBALL=152       # Premier League
-SEASON=2023                      # 2023/24 season
-
-# Load backend selector
-LOAD_BACKEND=sqlite              # or "bigquery"
-
-# BigQuery config (only used when LOAD_BACKEND=bigquery)
-BIGQUERY_PROJECT=task-etlv
-BIGQUERY_DATASET_API_SPORTS=api_sports_data
-BIGQUERY_DATASET_API_FOOTBALL=api_football_data
-BIGQUERY_LOCATION=US
-```
-
----
-
-## Bonus: schema evolution and historical snapshots
-
-The PDF's second bonus asks for "versioning or schema-evolution logic — design your schema so that if one source adds new fields in future, your pipeline can still adapt, or maintain historical snapshots." Both halves are implemented; they reinforce each other.
-
-### 2A — Historical snapshots
-
-Tables are loaded in **append mode** (`WRITE_APPEND` on BigQuery, `if_exists='append'` on SQLite) instead of being truncated. Every run adds 20 new rows per source, each tagged with `snapshot_at` (UTC timestamp set at transform time). The primary key becomes `(team_id, snapshot_at)` — the same team can appear once per run, allowing temporal analysis:
-
-```sql
--- Track Manchester City's points over time
-SELECT snapshot_at, points
-FROM `task-etlv.api_football_data.teams`
-WHERE team_name = 'Manchester City'
-ORDER BY snapshot_at;
-```
-
-**Why this matters**: this exact pattern is what powers any temporal AI feature engineering. In a real-estate context, tracking how a listing's price evolves over months feeds price-trend models. Without snapshots, every run wipes out the previous signal.
-
-### 2B — Schema evolution
-
-Two complementary mechanisms absorb upstream API changes without breaking the pipeline:
-
-**1. The `extra_fields` JSON column** — every transformer captures upstream fields not mapped to typed columns into a JSON-encoded dict:
-
-```json
-{
-  "coaches": [{"coach_name": "Pep Guardiola"}],
-  "venue.venue_address": "Rowsley Street",
-  "home_league_W": "12",
-  "home_league_GA": "12",
-  "away_league_W": "9",
-  "fk_stage_key": "6",
-  "stage_name": "Current"
-}
-```
-
-**No upstream field is ever silently dropped.** If API-Football adds a new attribute tomorrow, it lands in `extra_fields` automatically. Promoting it to a first-class column is just a one-line change in the transformer's `KNOWN_*_KEYS` set.
-
-**2. BigQuery `ALLOW_FIELD_ADDITION`** — the BigQuery load job is configured with:
-```python
-schema_update_options=[bigquery.SchemaUpdateOption.ALLOW_FIELD_ADDITION]
-```
-If we *do* promote a new field to a first-class column in the transformer, BigQuery's table schema auto-extends on the next load — no manual `ALTER TABLE` migration needed.
-
-**Why this matters**: when ingesting from many platforms that each evolve independently, the cost of "API X added field Y, our pipeline crashed at 3am" is the exact pain point of multi-source data ingestion systems. Both mechanisms together make new-field arrival a non-event.
-
-### Trade-off documented
-
-CSV exports remain **single-snapshot** (each run rewrites `data/exports/*.csv` with the current state). This keeps the deliverable a small, consumable file rather than an ever-growing dump. The full historical view lives in the database.
-
----
-
-## Bonus: monitoring dashboard (Looker Studio)
-
-Live dashboard:
-**https://datastudio.google.com/reporting/dab6608e-2856-4583-bd95-2cfd10a9b322**
-
-Per the PDF's first bonus option, the pipeline emits per-run metrics that feed a Looker Studio dashboard tracking:
-- **Total runs** (all-time count, per source)
-- **Pipeline duration over time** (time series, broken down by source)
-- **Records transformed per source** (success volume)
-- **Total errors and warnings logged** (KPI scorecards)
-- **Top 5 Premier League teams by points** (business chart, reading from `api_sports_data.teams`)
-
-### How metrics are produced
-
-Each pipeline run instantiates a `RunMetrics` dataclass per source ([`monitoring/metrics_collector.py`](monitoring/metrics_collector.py)) and a `CountingHandler` attached to the root logger that automatically counts `WARNING` and `ERROR` records during the source's flow. At the end of the run, a single batch insert appends two rows (one per source) to:
-
-- `pipeline_monitoring.pipeline_runs` in BigQuery (when `LOAD_BACKEND=bigquery`)
-- `pipeline_runs` table in `data/etl.db` (when `LOAD_BACKEND=sqlite`)
-
-The metrics table is **append-only** (`WRITE_APPEND` / `if_exists='append'`) — every run adds new rows so the dashboard shows the full history. This is the opposite of the data tables which use `WRITE_TRUNCATE` for idempotency.
-
-### Schema of `pipeline_runs`
-
-| Field | Type | Description |
-|---|---|---|
-| `run_id` | STRING | `YYYYMMDD-HHMMSS` — shared across both sources of the same execution |
-| `source_api` | STRING | `api_sports` / `api_football` |
-| `started_at` / `ended_at` | TIMESTAMP | UTC |
-| `duration_seconds` | FLOAT | wall-clock duration of the source's flow |
-| `extract_success` / `transform_success` / `load_success` / `export_success` | BOOLEAN | per-step status |
-| `rows_extracted` / `rows_transformed` / `rows_skipped` | INTEGER | row counts |
-| `warnings_count` / `errors_count` | INTEGER | log records counted per severity |
-
-The full DDL is in [`schema.sql`](schema.sql).
-
-### Why these metrics
-
-The PDF asks for a dashboard that tracks "API call counts, latency, error rates, pipeline processing time, record counts". Mapping:
-
-| PDF requirement | Field |
-|---|---|
-| Latency / processing time | `duration_seconds` |
-| Error rates | `extract_success` / `transform_success` / `load_success` / `export_success` + `errors_count` |
-| Record counts | `rows_extracted` / `rows_transformed` |
-| API call counts | counted by row presence (1 row per source per run) |
-
----
-
-## Bonus: scheduled execution (GitHub Actions)
-
-The PDF lists scheduling as optional. This pipeline runs **daily at 06:00 UTC** via [`.github/workflows/etl.yml`](.github/workflows/etl.yml), with full BigQuery integration:
-
-```yaml
-on:
-  schedule:
-    - cron: "0 6 * * *"
-  workflow_dispatch:        # also triggerable manually
-```
-
-Each run:
-1. Authenticates to GCP via a Service Account (stored as a GitHub Secret)
-2. Runs the full pipeline against BigQuery
-3. Uploads the logs and CSV exports as run artifacts (downloadable for 14 days)
-
-To check the latest run: https://github.com/Annasaks/task-etl/actions
-
-### Required GitHub Secrets
-- `GCP_SA_KEY` — service account JSON (with `BigQuery Data Editor` + `BigQuery Job User` + `BigQuery Read Session User`)
-- `API_SPORTS_KEY`
-- `API_FOOTBALL_KEY`
-
----
 
 ## Task coverage
 
-| PDF requirement | Status | Where |
-|---|---|---|
-| Fetch from both APIs, teams + standings | ✅ | `extract/api_*.py` |
-| Single standard schema (~10–15 fields) | ✅ (16 fields, justified) | `schema.py`, `schema.sql` |
-| Two separate source flows | ✅ | `main.py:run_source` × 2 |
-| Each source in its own dataset/table | ✅ | SQLite: 2 tables. BigQuery: 2 datasets |
-| Error logging — missing fields | ✅ | `transform/*` |
-| Error logging — API timeouts | ✅ | `http_utils.py:retry` |
-| Error logging — schema changes | ✅ | `extract/*:_check_schema` |
-| **Optional** — scheduled execution | ✅ | `.github/workflows/etl.yml` (daily) |
-| **Bonus 1** — monitoring dashboard | ✅ | [Looker Studio dashboard](https://datastudio.google.com/reporting/dab6608e-2856-4583-bd95-2cfd10a9b322) + `monitoring/` |
-| **Bonus 2** — schema evolution / historical snapshots | ✅ | append-only loading + `snapshot_at` + `extra_fields` JSON + `ALLOW_FIELD_ADDITION` |
-| Export — CSV | ✅ | `data/exports/*.csv` |
-| Source code with run instructions | ✅ | this README |
-| Schema definition (DDL) | ✅ | `schema.sql` |
-| README documentation | ✅ | this file |
-
----
-
-## Limitations
-
-- **API-Football season filter is not respected on the free tier** — see "Schema mismatches" above. Documented, not hidden.
-- **No deduplication** — `WRITE_TRUNCATE` / `if_exists='replace'` means every run replaces the table. There is no historical snapshot. Schema-evolution / versioning would be the natural next step (mentioned as a bonus in the PDF).
-- **20 rows per source** is the entire dataset for one Premier League season — not a sample or truncation.
+| Requirement | Status |
+| --- | --- |
+| Fetch from both APIs (teams + standings) | done |
+| Single standard schema (around 10–15 fields) | done — 18 fields, justified above |
+| Two separate source flows, separate tables/datasets | done |
+| Error logging (missing fields, timeouts, schema changes) | done |
+| GCP / BigQuery | done |
+| CSV export | done |
+| Optional — scheduled execution | done (GitHub Actions, daily) |
+| Bonus — monitoring dashboard | done (Looker Studio) |
+| Bonus — schema evolution and snapshots | done |
