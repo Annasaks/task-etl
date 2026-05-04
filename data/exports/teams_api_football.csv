@@ -1,0 +1,21 @@
+team_id,team_name,founded_year,logo_url,stadium_name,stadium_city,stadium_capacity,league_position,points,wins,draws,losses,goals_for,goals_against,source_api,season
+api_football_141,Arsenal,1886,https://apiv3.apifootball.com/badges/141_arsenal-fc.jpg,Emirates Stadium,London,60383,1,76,23,7,5,67,26,api_football,2023
+api_football_80,Manchester City,1880,https://apiv3.apifootball.com/badges/80_manchester-city.jpg,Etihad Stadium,Manchester,55097,2,70,21,7,5,66,29,api_football,2023
+api_football_102,Manchester Utd,1878,https://apiv3.apifootball.com/badges/102_manchester-united.jpg,Old Trafford,Manchester,76212,3,64,18,10,7,63,48,api_football,2023
+api_football_84,Liverpool,1892,https://apiv3.apifootball.com/badges/84_liverpool.jpg,Anfield,Liverpool,61276,4,58,17,7,11,59,47,api_football,2023
+api_football_3088,Aston Villa,1874,https://apiv3.apifootball.com/badges/3088_aston-villa.jpg,Villa Park,Birmingham,42824,5,58,17,7,11,48,44,api_football,2023
+api_football_3071,Bournemouth,1899,https://apiv3.apifootball.com/badges/3071_afc-bournemouth.jpg,Vitality Stadium,"Bournemouth, Dorset",12000,6,52,12,16,7,55,52,api_football,2023
+api_football_3086,Brentford,1889,https://apiv3.apifootball.com/badges/3086_brentford.jpg,Brentford Community Stadium,"Brentford, Middlesex",17250,7,51,14,9,12,52,46,api_football,2023
+api_football_3079,Brighton,1901,https://apiv3.apifootball.com/badges/3079_brighton--hove-albion.jpg,The American Express Community Stadium,"Falmer, East Sussex",31800,8,50,13,11,11,49,42,api_football,2023
+api_football_88,Chelsea,1905,https://apiv3.apifootball.com/badges/88_chelsea.jpg,Stamford Bridge,London,41841,9,48,13,9,12,53,45,api_football,2023
+api_football_3085,Fulham,1879,https://apiv3.apifootball.com/badges/3085_fulham.jpg,Craven Cottage,London,29589,10,48,14,6,15,44,49,api_football,2023
+api_football_3073,Everton,1878,https://apiv3.apifootball.com/badges/3073_everton.jpg,Goodison Park,Liverpool,40569,11,47,13,8,13,41,41,api_football,2023
+api_football_3111,Sunderland,1879,https://apiv3.apifootball.com/badges/3111_sunderland.jpg,Stadium of Light,Sunderland,49000,12,47,12,11,12,37,46,api_football,2023
+api_football_3100,Newcastle,1892,https://apiv3.apifootball.com/badges/3100_newcastle-united.jpg,St. James' Park,Newcastle upon Tyne,52758,13,45,13,6,16,49,51,api_football,2023
+api_football_3103,Leeds,1919,https://apiv3.apifootball.com/badges/3103_leeds-united.jpg,Elland Road,"Leeds, West Yorkshire",40204,14,43,10,13,12,47,52,api_football,2023
+api_football_3429,Crystal Palace,1861,https://apiv3.apifootball.com/badges/3429_crystal-palace.jpg,Selhurst Park,London,26309,15,43,11,10,13,36,42,api_football,2023
+api_football_3089,Nottingham,1865,https://apiv3.apifootball.com/badges/3089_nottingham-forest.jpg,The City Ground,"Nottingham, Nottinghamshire",30576,16,39,10,9,15,41,45,api_football,2023
+api_football_164,Tottenham,1882,https://apiv3.apifootball.com/badges/164_tottenham-hotspur.jpg,Tottenham Hotspur Stadium,London,62850,17,37,9,10,16,45,54,api_football,2023
+api_football_3081,West Ham,1895,https://apiv3.apifootball.com/badges/3081_west-ham-united.jpg,London Stadium,London,64472,18,36,9,9,17,42,61,api_football,2023
+api_football_3075,Burnley,1882,https://apiv3.apifootball.com/badges/3075_burnley.jpg,Turf Moor,Burnley,22546,19,20,4,8,23,35,71,api_football,2023
+api_football_3077,Wolves,1877,https://apiv3.apifootball.com/badges/3077_wolverhampton-wanderers.jpg,Molineux Stadium,"Wolverhampton, West Midlands",34624,20,18,3,9,23,25,63,api_football,2023

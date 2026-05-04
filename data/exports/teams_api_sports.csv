@@ -1,0 +1,21 @@
+team_id,team_name,founded_year,logo_url,stadium_name,stadium_city,stadium_capacity,league_position,points,wins,draws,losses,goals_for,goals_against,source_api,season
+api_sports_50,Manchester City,1880,https://media.api-sports.io/football/teams/50.png,Etihad Stadium,Manchester,55097,1,91,28,7,3,96,34,api_sports,2023
+api_sports_42,Arsenal,1886,https://media.api-sports.io/football/teams/42.png,Emirates Stadium,London,60383,2,89,28,5,5,91,29,api_sports,2023
+api_sports_40,Liverpool,1892,https://media.api-sports.io/football/teams/40.png,Anfield,Liverpool,61276,3,82,24,10,4,86,41,api_sports,2023
+api_sports_66,Aston Villa,1874,https://media.api-sports.io/football/teams/66.png,Villa Park,Birmingham,42824,4,68,20,8,10,76,61,api_sports,2023
+api_sports_47,Tottenham,1882,https://media.api-sports.io/football/teams/47.png,Tottenham Hotspur Stadium,London,62850,5,66,20,6,12,74,61,api_sports,2023
+api_sports_49,Chelsea,1905,https://media.api-sports.io/football/teams/49.png,Stamford Bridge,London,41841,6,63,18,9,11,77,63,api_sports,2023
+api_sports_34,Newcastle,1892,https://media.api-sports.io/football/teams/34.png,St. James' Park,Newcastle upon Tyne,52758,7,60,18,6,14,85,62,api_sports,2023
+api_sports_33,Manchester United,1878,https://media.api-sports.io/football/teams/33.png,Old Trafford,Manchester,76212,8,60,18,6,14,57,58,api_sports,2023
+api_sports_48,West Ham,1895,https://media.api-sports.io/football/teams/48.png,London Stadium,London,64472,9,52,14,10,14,60,74,api_sports,2023
+api_sports_52,Crystal Palace,1861,https://media.api-sports.io/football/teams/52.png,Selhurst Park,London,26309,10,49,13,10,15,57,58,api_sports,2023
+api_sports_51,Brighton,1901,https://media.api-sports.io/football/teams/51.png,American Express Stadium,"Falmer, East Sussex",31872,11,48,12,12,14,55,62,api_sports,2023
+api_sports_35,Bournemouth,1899,https://media.api-sports.io/football/teams/35.png,Vitality Stadium,"Bournemouth, Dorset",12000,12,48,13,9,16,54,67,api_sports,2023
+api_sports_36,Fulham,1879,https://media.api-sports.io/football/teams/36.png,Craven Cottage,London,29589,13,47,13,8,17,55,61,api_sports,2023
+api_sports_39,Wolves,1877,https://media.api-sports.io/football/teams/39.png,Molineux Stadium,"Wolverhampton, West Midlands",34624,14,46,13,7,18,50,65,api_sports,2023
+api_sports_45,Everton,1878,https://media.api-sports.io/football/teams/45.png,Hill Dickinson Stadium,"Liverpool, Merseyside",52888,15,40,13,9,16,40,51,api_sports,2023
+api_sports_55,Brentford,1889,https://media.api-sports.io/football/teams/55.png,Gtech Community Stadium,"Brentford, Middlesex",17250,16,39,10,9,19,56,65,api_sports,2023
+api_sports_65,Nottingham Forest,1865,https://media.api-sports.io/football/teams/65.png,The City Ground,"Nottingham, Nottinghamshire",30576,17,32,9,9,20,49,67,api_sports,2023
+api_sports_1359,Luton,1885,https://media.api-sports.io/football/teams/1359.png,Kenilworth Road,"Luton, Bedfordshire",11500,18,26,6,8,24,52,85,api_sports,2023
+api_sports_44,Burnley,1882,https://media.api-sports.io/football/teams/44.png,Turf Moor,Burnley,22546,19,24,5,9,24,41,78,api_sports,2023
+api_sports_62,Sheffield Utd,1889,https://media.api-sports.io/football/teams/62.png,Bramall Lane,Sheffield,32702,20,16,3,7,28,35,104,api_sports,2023
