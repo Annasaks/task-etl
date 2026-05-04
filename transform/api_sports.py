@@ -6,109 +6,89 @@ from typing import Optional
 import pandas as pd
 
 from config import SEASON
-from transform.utils import safe_int, safe_str
 
 logger = logging.getLogger(__name__)
 
 SOURCE = "api_sports"
 
-# Keys we map to typed columns. Anything else goes into extra_fields.
-KNOWN_TEAM_KEYS = {"id", "name", "code", "founded", "logo"}
-KNOWN_VENUE_KEYS = {"id", "name", "city", "capacity"}
-KNOWN_STANDING_KEYS = {"team", "rank", "points", "all", "home", "away", "update"}
-
-
-def _build_extra(team_block: dict, venue: dict, entry: dict) -> Optional[str]:
-    """Collect unmapped fields into a JSON dict so new upstream fields aren't lost."""
-    extra = {}
-    extra.update({
-        f"team.{k}": v for k, v in team_block.items()
-        if k not in KNOWN_TEAM_KEYS and v not in (None, "")
-    })
-    extra.update({
-        f"venue.{k}": v for k, v in venue.items()
-        if k not in KNOWN_VENUE_KEYS and v not in (None, "")
-    })
-    extra.update({
-        k: v for k, v in entry.items()
-        if k not in KNOWN_STANDING_KEYS and v not in (None, "")
-    })
-    return json.dumps(extra, ensure_ascii=False) if extra else None
+# Source columns we map to schema columns. Anything else goes to extra_fields.
+MAPPED_COLS = {
+    "team.id", "team.name", "team.founded", "team.logo",
+    "venue.name", "venue.city", "venue.capacity",
+    "rank", "points",
+    "all.win", "all.draw", "all.lose",
+    "all.goals.for", "all.goals.against",
+}
 
 
 def transform(teams_raw: list, standings_raw: list) -> Optional[pd.DataFrame]:
-    """Build a DataFrame matching the standard schema from API-Sports raw responses."""
     if not teams_raw or not standings_raw:
-        logger.error(f"{SOURCE}: empty input (teams={bool(teams_raw)}, standings={bool(standings_raw)})")
+        logger.error(f"{SOURCE}: empty input")
         return None
 
-    teams_by_id = {t["team"]["id"]: t for t in teams_raw if t.get("team", {}).get("id")}
+    # 1. Flatten the nested JSON into 2D DataFrames
+    standings = pd.json_normalize(standings_raw)
+    teams = pd.json_normalize(teams_raw)
 
-    snapshot_at = datetime.now(timezone.utc)
-    rows = []
-    skipped = 0
-    warnings = 0
+    # 2. Join standings (main table) with teams (enrichment) on team.id
+    df = standings.merge(teams, on="team.id", how="left", suffixes=("", "_t"))
 
-    for entry in standings_raw:
-        team_block = entry.get("team", {})
-        api_id = team_block.get("id")
-        team_name = safe_str(team_block.get("name"))
+    # 3. Drop rows missing critical fields
+    initial = len(df)
+    df = df.dropna(subset=["team.id", "team.name"])
+    skipped = initial - len(df)
+    if skipped:
+        logger.error(f"{SOURCE}: skipped {skipped} rows missing team_id/team_name")
 
-        if not api_id or not team_name:
-            logger.error(f"{SOURCE}: skipping standings entry — missing team id or name: {team_block}")
-            skipped += 1
-            continue
+    # 4. Map source columns to the standard schema
+    out = pd.DataFrame({
+        "team_id": SOURCE + "_" + df["team.id"].astype(int).astype(str),
+        "team_name": df["team.name"],
+        "founded_year": pd.to_numeric(df.get("team.founded"), errors="coerce").astype("Int64"),
+        "logo_url": df.get("team.logo_t").fillna(df.get("team.logo")),
+        "stadium_name": df.get("venue.name"),
+        "stadium_city": df.get("venue.city"),
+        "stadium_capacity": pd.to_numeric(df.get("venue.capacity"), errors="coerce").astype("Int64"),
+        "league_position": pd.to_numeric(df["rank"], errors="coerce").astype("Int64"),
+        "points": pd.to_numeric(df["points"], errors="coerce").astype("Int64"),
+        "wins": pd.to_numeric(df["all.win"], errors="coerce").astype("Int64"),
+        "draws": pd.to_numeric(df["all.draw"], errors="coerce").astype("Int64"),
+        "losses": pd.to_numeric(df["all.lose"], errors="coerce").astype("Int64"),
+        "goals_for": pd.to_numeric(df["all.goals.for"], errors="coerce").astype("Int64"),
+        "goals_against": pd.to_numeric(df["all.goals.against"], errors="coerce").astype("Int64"),
+        "source_api": SOURCE,
+        "season": SEASON,
+        "snapshot_at": datetime.now(timezone.utc),
+    })
 
-        team_info = teams_by_id.get(api_id, {})
-        team_details = team_info.get("team", {})
-        venue = team_info.get("venue", {})
+    # 5. Pack unmapped columns into a JSON catch-all
+    out["extra_fields"] = _build_extra(df)
 
-        if not team_info:
-            logger.warning(f"{SOURCE}: team {api_id} present in standings but missing in teams endpoint")
-            warnings += 1
+    # 6. Warn if any critical column has missing values
+    for col in ("league_position", "points", "wins", "draws", "losses", "goals_for", "goals_against"):
+        n_missing = out[col].isna().sum()
+        if n_missing:
+            logger.warning(f"{SOURCE}: {n_missing} rows missing '{col}'")
 
-        all_stats = entry.get("all", {})
-        goals = all_stats.get("goals", {})
+    logger.info(f"{SOURCE}: transformed {len(out)} rows, {skipped} skipped")
+    return out
 
-        row = {
-            "team_id": f"{SOURCE}_{api_id}",
-            "team_name": team_name,
-            "founded_year": safe_int(team_details.get("founded")),
-            "logo_url": safe_str(team_details.get("logo") or team_block.get("logo")),
-            "stadium_name": safe_str(venue.get("name")),
-            "stadium_city": safe_str(venue.get("city")),
-            "stadium_capacity": safe_int(venue.get("capacity")),
-            "league_position": safe_int(entry.get("rank")),
-            "points": safe_int(entry.get("points")),
-            "wins": safe_int(all_stats.get("win")),
-            "draws": safe_int(all_stats.get("draw")),
-            "losses": safe_int(all_stats.get("lose")),
-            "goals_for": safe_int(goals.get("for")),
-            "goals_against": safe_int(goals.get("against")),
-            "source_api": SOURCE,
-            "season": SEASON,
-            "snapshot_at": snapshot_at,
-            "extra_fields": _build_extra(team_details or team_block, venue, entry),
-        }
 
-        for col, val in row.items():
-            if val is None and col not in (
-                "founded_year", "logo_url", "stadium_name", "stadium_city",
-                "stadium_capacity", "extra_fields",
-            ):
-                logger.warning(f"{SOURCE}: team {team_name} missing required-ish field '{col}'")
-                warnings += 1
+def _build_extra(df: pd.DataFrame) -> pd.Series:
+    """Pack columns not in MAPPED_COLS into a JSON-encoded string per row."""
+    extra_cols = [c for c in df.columns if c not in MAPPED_COLS and not c.endswith("_t")]
+    if not extra_cols:
+        return pd.Series([None] * len(df), index=df.index)
 
-        rows.append(row)
+    def to_json(row):
+        d = {k: v for k, v in row.dropna().items() if v != ""}
+        return json.dumps(d, ensure_ascii=False, default=str) if d else None
 
-    df = pd.DataFrame(rows)
-    logger.info(f"{SOURCE}: transformed {len(df)} rows, {skipped} skipped, {warnings} warnings")
-    return df
+    return df[extra_cols].apply(to_json, axis=1)
 
 
 if __name__ == "__main__":
     from pathlib import Path
-
     logging.basicConfig(level=logging.INFO)
     raw_dir = Path(__file__).resolve().parent.parent / "data" / "raw"
     teams = json.loads((raw_dir / "api_sports_teams.json").read_text(encoding="utf-8"))
