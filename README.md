@@ -12,6 +12,7 @@ pip install -r requirements.txt
 cp .env.example .env          # fill in your API keys
 python main.py
 python -m scripts.preview     # inspect the loaded tables
+pytest                        # run the test suite
 ```
 
 After a run you will find:
@@ -91,6 +92,22 @@ The pipeline distinguishes three severities and applies them consistently across
 
 Logs are written to both `logs/etl.log` (cumulative) and stdout. Each transform ends with a summary line `transformed N rows, M skipped, K warnings`, and the pipeline ends with `API-Sports: 20 rows / loaded / CSV ok / 1.5s`.
 
+## Tests
+
+A `tests/` directory with `pytest` covers the parts of the pipeline where bugs would actually hurt:
+
+- `test_utils.py` — the `safe_int` / `safe_str` helpers (the cast layer that absorbs API-Football's strings).
+- `test_transformers.py` — both transformers run against fixture JSON files and check that the standard schema is produced, that string numbers are cast, that `extra_fields` captures unmapped upstream keys, and that empty input is handled.
+- `test_retry.py` — the `@retry` decorator: success path, retries on Timeout/5xx, no retry on 4xx, and exhaustion behaviour.
+- `test_metrics.py` — `RunMetrics.finalize()` and the `CountingHandler` that counts warnings and errors via the logging system.
+- `test_e2e.py` — runs the full pipeline against fixture files (HTTP layer mocked), verifies SQLite tables, CSV exports, and metrics.
+
+```bash
+pytest -v
+```
+
+35 tests, runs in ~2 seconds, no API quota consumed.
+
 ## Tech choices
 
 I chose Python with pandas because the source data is nested JSON and the volume is small (20 rows per source); a SQL-based ELT would have been heavier than what the data needs. SQLAlchemy provides the SQLite engine, which means swapping in PostgreSQL would only be a connection-string change. For BigQuery I use the official `google-cloud-bigquery` client, which integrates with Application Default Credentials in dev and with a service account in CI.
@@ -142,3 +159,4 @@ schema.sql   formal DDL
 | Optional — scheduled execution | done (GitHub Actions, daily) |
 | Bonus — monitoring dashboard | done (Looker Studio) |
 | Bonus — schema evolution and snapshots | done |
+| Tests (unit + e2e) | done — 35 tests via `pytest` |
