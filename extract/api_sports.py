@@ -84,8 +84,7 @@ def get_standings():
 
 
 if __name__ == "__main__":
-    from logging_config import setup_logging
-    setup_logging()
+    logging.basicConfig(level=logging.INFO)
     teams = get_teams()
     if teams:
         print(json.dumps(teams[0], indent=2))

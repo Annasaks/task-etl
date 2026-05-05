@@ -11,7 +11,6 @@ This pipeline ingests Premier League team and standings data from two football A
 pip install -r requirements.txt
 cp .env.example .env          # fill in your API keys
 python main.py
-python -m scripts.preview     # inspect the loaded tables
 pytest                        # run the test suite
 ```
 
