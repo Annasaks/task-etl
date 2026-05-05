@@ -96,7 +96,6 @@ Logs are written to both `logs/etl.log` (cumulative) and stdout. Each transform 
 
 A `tests/` directory with `pytest` covers the parts of the pipeline where bugs would actually hurt:
 
-- `test_utils.py` — the `safe_int` / `safe_str` helpers (the cast layer that absorbs API-Football's strings).
 - `test_transformers.py` — both transformers run against fixture JSON files and check that the standard schema is produced, that string numbers are cast, that `extra_fields` captures unmapped upstream keys, and that empty input is handled.
 - `test_retry.py` — the `@retry` decorator: success path, retries on Timeout/5xx, no retry on 4xx, and exhaustion behaviour.
 - `test_metrics.py` — `RunMetrics.finalize()` and the `CountingHandler` that counts warnings and errors via the logging system.
@@ -106,7 +105,7 @@ A `tests/` directory with `pytest` covers the parts of the pipeline where bugs w
 pytest -v
 ```
 
-35 tests, runs in ~2 seconds, no API quota consumed.
+25 tests, runs in ~2 seconds, no API quota consumed.
 
 ## Tech choices
 
@@ -159,4 +158,4 @@ schema.sql   formal DDL
 | Optional — scheduled execution | done (GitHub Actions, daily) |
 | Bonus — monitoring dashboard | done (Looker Studio) |
 | Bonus — schema evolution and snapshots | done |
-| Tests (unit + e2e) | done — 35 tests via `pytest` |
+| Tests (unit + e2e) | done — 25 tests via `pytest` |
